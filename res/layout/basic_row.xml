@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+        android:id="@+id/basiclabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="false"
+        android:ellipsize="end"
+        android:lines="4"
+        android:maxLines="4"
+        android:text=""
+/>

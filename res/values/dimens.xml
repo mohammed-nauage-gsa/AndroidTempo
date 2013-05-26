@@ -1,0 +1,11 @@
+<resources>
+
+    <dimen name="padding_small">8dp</dimen>
+    <dimen name="padding_medium">8dp</dimen>
+    <dimen name="padding_large">16dp</dimen>
+    <dimen name="textSize">20dp</dimen>
+    <dimen name="textSize30">30dp</dimen>
+    <dimen name="textSize25">25dp</dimen>
+    <dimen name="textSize22">22dp</dimen>
+
+</resources>

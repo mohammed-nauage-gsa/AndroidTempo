@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent" >
+
+    <TextView
+        android:id="@+id/config"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:text="TEMPO Nodes"
+        android:textAppearance="?android:attr/textAppearanceLarge" />
+    <LinearLayout
+        android:id="@+id/conBot3"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:weightSum="1.0" >
+
+        <Button
+            android:id="@+id/makeAnnotationList"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onMakeAnnotationListClick"
+            android:text="Make Annotation List" />
+
+        <Button
+            android:id="@+id/startSess"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onStartSessionClick"
+            android:text="@string/startSess" />
+    </LinearLayout>
+    
+            <LinearLayout
+        android:id="@+id/conBot2"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/conBot3"
+        android:weightSum="1.0" >
+
+        <Button
+            android:id="@+id/scan"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onLookForNodesClick"
+            android:text="Rediscover Nodes" />
+
+        <Button
+            android:id="@+id/Decription"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onSessionDescriptionClick"
+            android:text="@string/descSess" />
+    </LinearLayout>
+    
+        <LinearLayout
+        android:id="@+id/conBot1"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/conBot2"
+        android:weightSum="1.0" >
+
+        <Button
+            android:id="@+id/saveConfig"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onSaveConfigurationClick"
+            android:text="Save Configuration" />
+
+        <Button
+            android:id="@+id/loadConfig"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight=".50"
+            android:onClick="onLoadConfigurationClick"
+            android:text="Load Configuration" />
+    </LinearLayout>
+    
+    
+
+    
+
+
+    <ListView
+        android:id="@+id/deviceList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/conBot1"
+        android:layout_below="@id/config" />
+
+</RelativeLayout>

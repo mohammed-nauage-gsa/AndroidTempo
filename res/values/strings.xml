@@ -1,0 +1,23 @@
+<resources>
+
+    <string name="app_name">Android TEMPO</string>
+    <string name="search">Look for Nodes</string>
+    <string name="title_activity_DeviceSelection">Configure</string>
+    <string name="startSess">Start Session</string>
+    <string name="stopSess">Stop Session</string>
+    <string name="startAnno">Set Annotation</string>
+    
+  	<string name="nodesFound">Nodes Found</string>
+    <string name="toggleNodeLocOn">Set Node Location On</string>
+    <string name="descSess">Describe Session</string>
+    <string name="nodesInSess">Nodes in Session</string>
+    <string name="mainDirectory">Android Tempo</string>
+    <string name="devices.csv">devices.csv</string>
+    <string name="btNotSupported">Bluetooth NOT Supported</string>
+    <string name="selectNodes">Select Nodes</string>
+    <string name="toggleNodeLocOff">Set Node Location Off</string>
+    <string name="nodeLoc">Set Node Locations</string>
+    
+    
+
+</resources>
