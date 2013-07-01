@@ -7,8 +7,10 @@ import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Hashtable;
 import java.util.Vector;
@@ -18,6 +20,8 @@ import src.AndroidTempo.TEMPOService.LocalBinder;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
@@ -59,7 +63,6 @@ public class Main extends Activity {
 	* onActivityResult() uses to identify that the result came
 	* from an activity that enables Bluetooth.
 	*/
-//	public static final int REQUEST_ENABLE_BT = 1;
 	
 	/** Request code that the function
 	* onActivityResult() uses to identify that the result came
@@ -82,7 +85,7 @@ public class Main extends Activity {
 	/**
 	 * Contains data concerning the items in the list view
 	 */
-	private SelectionAdapter btArrayAdapter;
+	private SelectionAdapter selectionList;
 
 	/**
 	 * Contains the string that the user specifies to describe the session.
@@ -98,9 +101,10 @@ public class Main extends Activity {
 	/**
 	 * Contains the node names that are a part of a predefined configuration that has been selected
 	 */
-	private TEMPODevice[] configNodes;
+	private TEMPODeviceInfo[] configNodes;
 
 	private TEMPOService mService;
+	
 
 	/**************************************************************************
 	 * Creates default files and folders if they do not exist
@@ -122,20 +126,20 @@ public class Main extends Activity {
 	 * @param savedInstanceState holds all the data that may be saved when
 	 * 							onSaveInstanceState
 	 *****************************************************************************/
-	private void initVars(Bundle savedInstanceState){
+	private void initVars(){
 
 		// which will store the description of the session.
 		sessionDescription = "";
 
 		annotationList = new ArrayList<String>();
-		configNodes = new TEMPODevice[0];
+		configNodes = new TEMPODeviceInfo[0];
 		
 		
 		// initializes an empty ListView
 		ListView devicesFound = (ListView) findViewById(R.id.deviceList);
-		btArrayAdapter = new SelectionAdapter(
-				devicesFound.getContext(), new ArrayList<TEMPODevice>());
-		devicesFound.setAdapter(btArrayAdapter);
+		selectionList = new SelectionAdapter(
+				devicesFound.getContext(), new ArrayList<TEMPODeviceInfo>());
+		devicesFound.setAdapter(selectionList);
 		devicesFound.setOnItemClickListener(new ItemClickListener());
 		
 		
@@ -152,9 +156,20 @@ public class Main extends Activity {
 		super.onCreate(savedInstanceState);
 
 		setContentView(R.layout.config);
-
+		
+		Intent connectionServiceIntent = new Intent(this,
+				TEMPOService.class);
+		startService(connectionServiceIntent);
+		
+		// bind to connection service
+		// so functions in the service can be accessed
+		connectionServiceIntent = new Intent(this,
+				TEMPOService.class);
+		bindService(connectionServiceIntent, mConnection,
+				Context.BIND_AUTO_CREATE);
 		createDefaultFiles();
-		initVars(savedInstanceState);
+		
+		initVars();
 
 	}
 
@@ -164,6 +179,9 @@ public class Main extends Activity {
 	@Override
 	public void onDestroy() {
 		super.onDestroy();
+		stopService(new Intent(Main.this, TEMPOService.class));
+		unbindService(mConnection);
+		
 	}
 
 
@@ -186,7 +204,7 @@ public class Main extends Activity {
 
 			// gets the string that is shown on the ListView item that was
 			// clicked
-			final TEMPODevice item = (TEMPODevice) adpt.getItemAtPosition(pos);
+			final TEMPODeviceInfo item = (TEMPODeviceInfo) adpt.getItemAtPosition(pos);
 			// Checks selection/setting location states
 			// Creates an dialog box builder
 			AlertDialog.Builder alert = new AlertDialog.Builder(
@@ -208,7 +226,7 @@ public class Main extends Activity {
 			alert.setView(input);
 			// sets the default message of the alert box
 			alert.setMessage("Enter Location for "
-					+ item.getName());
+					+ item.getNodeName());
 			
 			// sets what happens when you press OK
 			alert.setPositiveButton("OK",
@@ -223,7 +241,7 @@ public class Main extends Activity {
 							item.setLocation(loc);
 							
 							// updates ListView
-							btArrayAdapter.notifyDataSetChanged();
+							selectionList.notifyDataSetChanged();
 							
 						}
 					});
@@ -284,15 +302,15 @@ public class Main extends Activity {
 	 *****************************************************************************/
 	public void onStartSessionClick(View view) {
 
-		ArrayList<TEMPODevice> selected = btArrayAdapter.getSelected();
+		ArrayList<TEMPODeviceInfo> selected = selectionList.getSelected();
 
 		if(selected.size() > 0){
 			// sends Monitor the set of nodes that were selected for the session
 			Intent i = new Intent(Main.this, SessionMonitor.class);
+			Bundle b = new Bundle();
 			i.putExtra("selected", selected);
 			Collections.sort(annotationList);
 			i.putExtra("annotations", annotationList);
-	
 			try {
 				// writes names and locations of the selected nodes into
 				// a file which will be later used by datToXML.java
@@ -300,7 +318,7 @@ public class Main extends Activity {
 						"namesAndLocations.dat"));
 				//String name;
 				for (int j = 0; j < selected.size(); j++) {
-					nameAndLocWriter.write(selected.get(j).getName() + "\n"
+					nameAndLocWriter.write(selected.get(j).getNodeName() + "\n"
 							+ selected.get(j).getLocation() + "\n");
 	
 				}
@@ -360,14 +378,16 @@ public class Main extends Activity {
 
 		alert.setPositiveButton("Load", new DialogInterface.OnClickListener() {
 			public void onClick(DialogInterface dialog, int which) {
+
 				try {
 					String[] mac,loc,anno;
-					BufferedReader configFileReader = new BufferedReader(new InputStreamReader(new FileInputStream(new File(configurationFolder,
-							input.getSelectedItem().toString()))));
+					File configFile = new File(configurationFolder, input.getSelectedItem().toString());
+					BufferedReader configFileReader = new BufferedReader(new InputStreamReader(new FileInputStream(configFile)));
 					mac = configFileReader.readLine().replace("\n", "").split(",");					
 					loc = configFileReader.readLine().replace("\n", "").split(",");
-
-					configNodes = new TEMPODevice[mac.length];
+					System.out.println(loc.length);
+					System.out.println(mac.length);
+					configNodes = new TEMPODeviceInfo[mac.length];
 					for(int i = 0; i < mac.length; i++){
 						configNodes[i] = mService.getTEMPODevice(mac[i]);
 						configNodes[i].setLocation(loc[i]);
@@ -383,14 +403,12 @@ public class Main extends Activity {
 					
 					sessionDescription = configFileReader.readLine().replace("\n","");
 					
-					
-
-					btArrayAdapter.clearSelected();
-					btArrayAdapter.clear();
+					selectionList.clearSelected();
+					selectionList.clear();
 					Arrays.sort(configNodes);
 					addConfigurationNodes();
 					
-
+					
 					
 				} catch (FileNotFoundException e) {
 					// TODO Auto-generated catch block
@@ -400,10 +418,6 @@ public class Main extends Activity {
 					e.printStackTrace();
 				}
 				
-				
-				BluetoothAdapter.getDefaultAdapter().startDiscovery();
-
-
 			}
 		});
 		alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
@@ -413,17 +427,18 @@ public class Main extends Activity {
 
 	}
 	
+	
 	/**************************************************************************
 	 * Adds configuration nodes to the ListView
 	 * @param view The view that was clicked
 	 *****************************************************************************/
 	private void addConfigurationNodes(){
-		TEMPODevice[] localConfigNodes = configNodes;
-		btArrayAdapter.clearConfigNodesNotFound();
+		TEMPODeviceInfo[] localConfigNodes = configNodes;
+		selectionList.resetConfigNodeAvailailability();
 		for(int i = 0; i < localConfigNodes.length; i++){
-			btArrayAdapter.add(localConfigNodes[i]);
-			btArrayAdapter.addToConfigNodesNotFound(localConfigNodes[i]);
-			btArrayAdapter.addSelected(localConfigNodes[i]);
+			selectionList.add(localConfigNodes[i]);
+			selectionList.setConfigNodeAvailable(localConfigNodes[i], false);
+			selectionList.setSelected(localConfigNodes[i], true);
 
 		}
 		
@@ -462,8 +477,7 @@ public class Main extends Activity {
 							input.getText().toString()));
 
 					String saveData = "";
-					ArrayList<TEMPODevice> selected = btArrayAdapter.getSelected();
-					String[] selectedMACs;
+					ArrayList<TEMPODeviceInfo> selected = selectionList.getSelected();
 					if(selected != null && selected.size() > 0){
 						
 						for(int i = 0; i < selected.size()-1; i++){
@@ -571,25 +585,25 @@ public class Main extends Activity {
 
 		// clears everything that may be changed due to searching for
 		// bluetooth devices
-		btArrayAdapter.clear();
-		btArrayAdapter.clearSelected();
+		selectionList.clear();
+		selectionList.clearSelected();
 		addConfigurationNodes();
-		ArrayList<TEMPODevice> availableNodes = mService.getAvailableNodes();
-		for(TEMPODevice i: availableNodes){
-			if (btArrayAdapter.getPosition(i) == -1) {
+		ArrayList<TEMPODeviceInfo> availableNodes = mService.getAvailableNodes();
+		for(TEMPODeviceInfo i: availableNodes){
+			if (selectionList.getPosition(i) == -1) {
 				// if it is a tempo node and it does not exist in the
 				// list view it is added to the ListView
-				btArrayAdapter.add(i);
+				selectionList.add(i);
 			}
 			if(Arrays.binarySearch(configNodes, i) >= 0){
-				btArrayAdapter.removeFromConfigNodesNotFound(i);
+				selectionList.setConfigNodeAvailable(i, true);
 			}
 		}
 
-		btArrayAdapter.notifyDataSetChanged();
-
+		selectionList.notifyDataSetChanged();
 
 	}
+	
 
 	
 
@@ -615,9 +629,9 @@ public class Main extends Activity {
 		if (requestCode == REQUEST_MONITOR) {
 			// If it comes back from the Monitor activity,
 			// it resets all ProgramState
-			btArrayAdapter.clear();
-			btArrayAdapter.clearSelected();
-			btArrayAdapter.notifyDataSetChanged();
+			selectionList.clear();
+			selectionList.clearSelected();
+			selectionList.notifyDataSetChanged();
 
 
 			File[] files = tempDir.listFiles();
@@ -632,15 +646,60 @@ public class Main extends Activity {
 
 		}
 	}
+	
+	@Override
+	protected void onSaveInstanceState(Bundle savedInstanceState) {
+		  super.onSaveInstanceState(savedInstanceState);
+		  savedInstanceState.putParcelableArray("configNodes", configNodes);
+		  ArrayList<TEMPODeviceInfo> selectedList = selectionList.getSelected();
+		  
+		  savedInstanceState.putParcelableArray("selectedNodes", selectedList.toArray(new TEMPODeviceInfo[selectedList.size()]));
+		  savedInstanceState.putParcelableArray("unavailableConfigNodes", selectionList.getUnavailableConfigNodes());
+		  savedInstanceState.putSerializable("allItems", selectionList.getAllItems());		  
+		  
+		  savedInstanceState.putStringArrayList("annotationsList", annotationList);
+		  savedInstanceState.putString("sessionDescription", sessionDescription);
+		  
+	}
 
+	@Override
+	protected void onRestoreInstanceState(Bundle savedInstanceState) {
+	  super.onRestoreInstanceState(savedInstanceState);
+
+	  configNodes =  (TEMPODeviceInfo[]) savedInstanceState.getParcelableArray("configNodes");
+	  //addConfigurationNodes();
+	  TEMPODeviceInfo[] allItems = (TEMPODeviceInfo[]) savedInstanceState.getParcelableArray("allItems");
+	  
+	  for(int i = 0; i < allItems.length; i++){
+		  selectionList.add(allItems[i]);
+	  }
+	  
+	  TEMPODeviceInfo[] unavailableConfigNodes = (TEMPODeviceInfo[]) savedInstanceState.getParcelableArray("unavailableConfigNodes");
+	  for(int i = 0; i < unavailableConfigNodes.length; i++){
+		  selectionList.setConfigNodeAvailable(unavailableConfigNodes[i], false);
+	  }
+	  TEMPODeviceInfo[] selectedNodes = (TEMPODeviceInfo[]) savedInstanceState.getParcelableArray("selectedNodes");
+	  for(int i = 0; i < selectedNodes.length; i++){
+		  selectionList.setSelected(selectedNodes[i], true);
+	  }
+	  
+	  selectionList.notifyDataSetChanged();
+	  
+	  annotationList = savedInstanceState.getStringArrayList("annotationsList");
+	  sessionDescription = savedInstanceState.getString("sessionDescription");
+	}
+	
+	
+	
+	
 	/**************************************************************************
 	 * This class keeps track of information concerning a ListView(what is
 	 * or is not selected and what exists in a ListView).
 	 *****************************************************************************/
-	private class SelectionAdapter extends ArrayAdapter<TEMPODevice> {
+	private class SelectionAdapter extends ArrayAdapter<TEMPODeviceInfo> {
 
 		private final Context context;
-		private ArrayList<TEMPODevice> vals, configNodesNotFound;
+		private ArrayList<TEMPODeviceInfo> allItems, unavailableConfigNodes;
 		private Vector<Integer> selected;
 
 		/**************************************************************************
@@ -648,12 +707,20 @@ public class Main extends Activity {
 		 * @param context The current context.
 		 * @param pValues The list of strings that will initially be in the ListView.
 		 *****************************************************************************/
-		public SelectionAdapter(Context context, ArrayList<TEMPODevice> pValues) {
+		public SelectionAdapter(Context context, ArrayList<TEMPODeviceInfo> pValues) {
 			super(context, R.layout.row, pValues);
 			this.context = context;
-			vals = pValues;
+			allItems = pValues;
 			selected = new Vector<Integer>();
-			configNodesNotFound = new ArrayList<TEMPODevice>();
+			unavailableConfigNodes = new ArrayList<TEMPODeviceInfo>();
+		}
+		public TEMPODeviceInfo[] getAllItems() {
+			// TODO Auto-generated method stub
+			return allItems.toArray(new TEMPODeviceInfo[allItems.size()]);
+		}
+		public TEMPODeviceInfo[] getUnavailableConfigNodes() {
+			// TODO Auto-generated method stub
+			return unavailableConfigNodes.toArray(new TEMPODeviceInfo[unavailableConfigNodes.size()]);
 		}
 		/**************************************************************************
 		 * Removes all elements from the selected vector
@@ -664,32 +731,27 @@ public class Main extends Activity {
 			this.notifyDataSetChanged();
 		}
 		
-		/**************************************************************************
-		 * Adds elements to the selected vector
-		 * @param node The string in the form of what is expected to be seen
-		 * 						in the listView(name\nMAC\nlocation) which represents a node.
-		 *****************************************************************************/
-		public void addToConfigNodesNotFound(TEMPODevice node){
-			if(!configNodesNotFound.contains(node))
-				configNodesNotFound.add(node);
-			this.notifyDataSetChanged();
-		}
 		
 		/**************************************************************************
 		 * Removes elements to the configNodesNOtFound vector
 		 * @param node The string in the form of what is expected to be seen
 		 * 						in the listView(name\nMAC\nlocation) which represents a node.
 		 *****************************************************************************/
-		public void removeFromConfigNodesNotFound(TEMPODevice node){
-			configNodesNotFound.remove(node);
+		public void setConfigNodeAvailable(TEMPODeviceInfo node, boolean available){
+			
+			if(available)
+				unavailableConfigNodes.remove(node);
+			else if(!unavailableConfigNodes.contains(node))
+				unavailableConfigNodes.add(node);
+			
 			this.notifyDataSetChanged();
 		}
 				
 		/**************************************************************************
-		 * Removes all elements to the configNodesNotFound vector
+		 * Removes all elements to the unavailableConfigNodes vector
 		 *****************************************************************************/
-		public void clearConfigNodesNotFound(){
-			configNodesNotFound.clear();
+		public void resetConfigNodeAvailailability(){
+			unavailableConfigNodes.clear();
 			this.notifyDataSetChanged();
 		}
 		
@@ -699,11 +761,17 @@ public class Main extends Activity {
 		 * @param selectedItem The string in the form of what is expected to be seen
 		 * 						in the listView(name\nMAC\nlocation) which represents a node.
 		 *****************************************************************************/
-		public void addSelected(TEMPODevice node) {
-			if(vals.indexOf(node) >= 0)
-				selected.add(vals.indexOf(node));
+		public boolean setSelected(TEMPODeviceInfo node, boolean isSelected) {
+			boolean ret = false;
+			if(allItems.indexOf(node) >= 0 && selected.size() < 7 && isSelected) {
+				selected.add(allItems.indexOf(node));
+				ret = true;
+			} else if(allItems.contains(node) && !isSelected) {
+				selected.removeElement(allItems.indexOf(node));
+				ret = true;
+			}
 			this.notifyDataSetChanged();
-			
+			return ret;
 		}
 
 		/**************************************************************************
@@ -725,7 +793,7 @@ public class Main extends Activity {
 			TextView textView = (TextView) rowView.findViewById(R.id.label);
 			final CheckBox select = (CheckBox) rowView
 					.findViewById(R.id.select);
-			textView.setText(vals.get(position).toString());
+			textView.setText(allItems.get(position).toString());
 			
 			
 			
@@ -735,7 +803,7 @@ public class Main extends Activity {
 				select.setChecked(false);
 			}
 			
-			if(configNodesNotFound.contains(vals.get(position))){
+			if(unavailableConfigNodes.contains(allItems.get(position))){
 				textView.setTextColor(Color.RED);
 			} else {
 				textView.setTextColor(Color.WHITE);
@@ -766,18 +834,20 @@ public class Main extends Activity {
 		 * @return A vector of strings that contains the displayed items that
 		 * 			were selected to be in a session.
 		 *****************************************************************************/
-		public ArrayList<TEMPODevice> getSelected() {
-			ArrayList<TEMPODevice> selectedStrings = new ArrayList<TEMPODevice>();
+		public ArrayList<TEMPODeviceInfo> getSelected() {
+			ArrayList<TEMPODeviceInfo> selectedStrings = new ArrayList<TEMPODeviceInfo>();
 
 			for(int i = 0; i < selected.size(); i++){
-				selectedStrings.add(vals.get(selected.get(i)));
+				selectedStrings.add(allItems.get(selected.get(i)));
 			}
 			return selectedStrings;
 		}
+
 		
 		
 
 	}
+
 	
 	private ServiceConnection mConnection = new ServiceConnection() {
 		/**************************************************************************

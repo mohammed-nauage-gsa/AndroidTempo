@@ -4,8 +4,12 @@ import java.nio.ByteBuffer;
 
 public class TEMPOPacket {
 
+	public final static int BYTES_PER_SAMPLE = 12;
+
+	
 	private ByteBuffer packet;
 	private long timeRecieved;
+	
 	
 	public TEMPOPacket(ByteBuffer packet, long timeRecieved){
 		this.packet = packet;
@@ -29,9 +33,6 @@ public class TEMPOPacket {
 		return timeRecieved;
 	}
 
-
-
-
 	public ByteBuffer getByteBufferOfPacket() {
 		// TODO Auto-generated method stub
 		return cloneByteBuffer(packet);
@@ -48,15 +49,13 @@ public class TEMPOPacket {
 	}
 
 
-	public static short[] getXaccel(byte[] packet){
+	public short[] getXaccel(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Xaccel = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 0; i < packet.length-6; i+=12){
-				Xaccel[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Xaccel = new short[packet.capacity()/12];
+			for(int i = 0; i < packet.capacity()-6; i+=12){
+				Xaccel[i/12] = packet.getShort(i);
 			}
 			return Xaccel;
 		} else {
@@ -66,15 +65,13 @@ public class TEMPOPacket {
 		
 	}
 
-	public static short[] getYaccel(byte[] packet){
+	public short[] getYaccel(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Yaccel = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 2; i < packet.length-6; i+=12){
-				Yaccel[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Yaccel = new short[packet.capacity()/12];
+			for(int i = 2; i < packet.capacity()-6; i+=12){
+				Yaccel[i/12] = packet.getShort(i);
 			}
 			return Yaccel;
 		} else {
@@ -83,15 +80,13 @@ public class TEMPOPacket {
 		
 		
 	}
-	public static short[] getZaccel(byte[] packet){
+	public short[] getZaccel(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Zaccel = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 4; i < packet.length-6; i+=12){
-				Zaccel[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Zaccel = new short[packet.capacity()/12];
+			for(int i = 4; i < packet.capacity()-6; i+=12){
+				Zaccel[i/12] = packet.getShort(i);
 			}
 			return Zaccel;
 		} else {
@@ -100,15 +95,13 @@ public class TEMPOPacket {
 		
 		
 	}
-	public static short[] getXGyro(byte[] packet){
+	public short[] getXGyro(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Xgyro = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 6; i < packet.length-6; i+=12){
-				Xgyro[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Xgyro = new short[packet.capacity()/12];
+			for(int i = 6; i < packet.capacity()-6; i+=12){
+				Xgyro[i/12] = packet.getShort(i);
 			}
 			return Xgyro;
 		} else {
@@ -117,15 +110,13 @@ public class TEMPOPacket {
 		
 		
 	}
-	public static short[] getYGyro(byte[] packet){
+	public short[] getYGyro(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Ygyro = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 8; i < packet.length-6; i+=12){
-				Ygyro[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Ygyro = new short[packet.capacity()/12];
+			for(int i = 8; i < packet.capacity()-6; i+=12){
+				Ygyro[i/12] = packet.getShort(i);
 			}
 			return Ygyro;
 		} else {
@@ -135,15 +126,13 @@ public class TEMPOPacket {
 		
 	}
 	
-	public static short[] getZgyro(byte[] packet){
+	public short[] getZgyro(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[] Zgyro = new short[packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 10; i < packet.length-6; i+=12){
-				Zgyro[i/12] = converter.getShort(i);
+		if((packet.capacity()-6)%12 == 0){
+			short[] Zgyro = new short[packet.capacity()/12];
+			for(int i = 10; i < packet.capacity()-6; i+=12){
+				Zgyro[i/12] = packet.getShort(i);
 			}
 			return Zgyro;
 		} else {
@@ -154,11 +143,10 @@ public class TEMPOPacket {
 	}
 	
 	
-	public static Integer getsysCounter(byte[] packet){
+	public Integer getSysCounter(){
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
-		
-		if((packet.length-6)%12 == 0){
-			return ByteBuffer.allocate(packet.length).put(packet).getInt(packet.length-6);
+		if((packet.capacity()-6)%12 == 0){
+			return packet.getInt(packet.capacity()-6);
 		} else {
 			return null;
 		}
@@ -166,17 +154,15 @@ public class TEMPOPacket {
 		
 	}
 	
-	public static short[][] getAllData(byte[] packet){
+	public short[][] getAllData(){
 		
 		
 		//ArrayList<Short> Xaccel, Yaccel, Zaccel, Xgyro, Ygyro, Zgyro;
 		
-		if((packet.length-6)%12 == 0){
-			short[][] data = new short[6][packet.length/12];
-			ByteBuffer converter = ByteBuffer.allocate(packet.length);
-			converter.put(packet);
-			for(int i = 0; i < packet.length-6; i+=12){
-				data[(i/2)%6][i/12] = converter.getShort();
+		if((packet.capacity()-6)%12 == 0){
+			short[][] data = new short[6][packet.capacity()/12];
+			for(int i = 0; i < packet.capacity()-6; i+=2){
+				data[(i/2)%6][i/12] = packet.getShort(i);
 			}
 			return data;
 		} else {

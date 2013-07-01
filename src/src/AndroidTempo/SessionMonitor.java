@@ -53,19 +53,13 @@ import android.widget.TextView;
  */
 public class SessionMonitor extends Activity {
 
-	private ArrayAdapter<TEMPODevice> devicesInSession;
+	private ArrayAdapter<TEMPODeviceInfo> devicesInSession;
 	private TEMPOService mService;
 	private DataOutputStream annoStream, timeStream;
 	private ArrayList<String> annotationList;
 	private PowerManager.WakeLock wakeLock;
 	private boolean stopped;
 	
-	
-	//0x00 waiting for mainTask to start collecting
-	//0x01 mainTask collecting
-	//0x02 waiting for mainTask to stop mainTask collecting
-	//0x03 mainTask stopped collecting
-	private byte hi;
 	
 	/**************************************************************************
 	 * Initializes activity.
@@ -106,9 +100,9 @@ public class SessionMonitor extends Activity {
 
 		// Makes new ListView
 		ListView deviceList = (ListView) findViewById(R.id.deviceList);
-		ArrayList<TEMPODevice> itemList = (ArrayList<TEMPODevice>) getIntent().getSerializableExtra("selected");
+		ArrayList<TEMPODeviceInfo> itemList = (ArrayList<TEMPODeviceInfo>) getIntent().getSerializableExtra("selected");
 		
-		devicesInSession = new ArrayAdapter<TEMPODevice>(deviceList.getContext(),
+		devicesInSession = new ArrayAdapter<TEMPODeviceInfo>(deviceList.getContext(),
 				R.layout.basic_row, itemList);
 		deviceList.setAdapter(devicesInSession);
 
@@ -127,8 +121,6 @@ public class SessionMonitor extends Activity {
 	@Override
 	public void onDestroy() {
 		super.onDestroy();
-		this.stopService(new Intent(SessionMonitor.this,
-				TEMPOService.class));
 		wakeLock.release();
 
 	}
@@ -225,9 +217,8 @@ public class SessionMonitor extends Activity {
 		((Button)findViewById(R.id.startAnno)).setEnabled(false);
 		
 		// stops collecting data and disconnects all nodes
-		for(int i = 0; i < devicesInSession.getCount(); i++) {
-			mService.stopCollection(devicesInSession.getItem(i));
-		}
+
+		mService.stopCollection();
 		// unbinds service
 		unbindService(mConnection);
 		// unregisters reciever
@@ -277,14 +268,16 @@ public class SessionMonitor extends Activity {
 	
 	private class mainTask extends AsyncTask<String,String,String>{
 		
-		private ArrayList<TEMPODevice> devicesCollecting;
+		private ArrayList<TEMPODeviceInfo> devicesCollecting;
 		private File[] tempDataFile;
 		private FileOutputStream[] tempDataFileWriter;
 		private int[] currentFileNumber;
+		private TEMPOService collectionService;
 		
 		@Override
 		protected void onPreExecute() {
-			devicesCollecting = mService.getNodesInSession();
+			collectionService = mService;
+			devicesCollecting = collectionService.getNodesCollecting();
 			for(int i = 0; i < devicesInSession.getCount(); i++){
 				if(!devicesCollecting.contains(devicesInSession.getItem(i))){
 					devicesCollecting.remove(devicesInSession.getItem(i));
@@ -294,9 +287,10 @@ public class SessionMonitor extends Activity {
 			tempDataFile = new File[devicesCollecting.size()];
 			tempDataFileWriter = new FileOutputStream[devicesCollecting.size()];
 
-			for(TEMPODevice i: devicesCollecting){
+			for(TEMPODeviceInfo i: devicesCollecting){
 				makeNewTempFile(i);
 			}
+			
 
 		}
 
@@ -311,24 +305,25 @@ public class SessionMonitor extends Activity {
 //			int currentSysCounter = 0;
 //			int prevSysCounter = 0;
 			TEMPOPacket[] newPackets = null;
-			TEMPOPacket[] mostRecentPacket = null;
-			
+			TEMPOPacket[] mostRecentPacket = new TEMPOPacket[devicesCollecting.size()];
 			while(!stopped){
 				for(int i = 0; i < devicesCollecting.size(); i++){
 					try {
-						newPackets = devicesCollecting.get(i).getNewPackets(mostRecentPacket[i]);
-					
-						
-						if(newPackets != null && newPackets.length > 0){
-							if(mostRecentPacket == null)
-								recordStartTime(newPackets[0].getTimeRecieved()-1000, devicesCollecting.get(i));
-							mostRecentPacket[i] = newPackets[0];
-						}
-						
-						for(int j = 0; j < newPackets.length; j++){
-							buffer = newPackets[j].getByteBufferOfPacket().array();
-							if(buffer != null && buffer.length > 6)
-								tempDataFileWriter[i].write(buffer, 0, buffer.length-6);
+						//newPackets = devicesCollecting.get(i).getNewPackets(mostRecentPacket[i]);
+						if(collectionService.dataIsAvailableSincePacket(devicesCollecting.get(i), mostRecentPacket[i])){
+							newPackets = collectionService.getRawDataSincePacket(devicesCollecting.get(i), mostRecentPacket[i]);
+							System.out.println(newPackets[0].getByteBufferOfPacket().capacity());
+							if(newPackets != null && newPackets.length > 0){
+								if(mostRecentPacket[i] == null)
+									recordStartTime(newPackets[0].getTimeRecieved()-1000, devicesCollecting.get(i));
+								mostRecentPacket[i] = newPackets[0];
+							}
+							
+							for(int j = 0; j < newPackets.length; j++){
+								buffer = newPackets[j].getByteBufferOfPacket().array();
+								if(buffer != null && buffer.length > 6)
+									tempDataFileWriter[i].write(buffer, 0, buffer.length-6);
+							}
 						}
 						
 //						if(pipes.get(i).available() >= 2){
@@ -375,74 +370,76 @@ public class SessionMonitor extends Activity {
 
 		private int balance;
 		
-		private short validate(byte[] buff, short end, int curSysCounter, int prevSysCounter){
-			int diff;
-
-			byte mcr = MOD_CR;
-			byte mlf = MOD_LF;
-			//Checks to see if it got the entire packet
-			//and if it got the right number of bytes
-			if (end <= 6 || buff[(end - 2)] != '\r' || buff[(end - 1)] != '\n'
-					|| (end - 6) % TEMPODevice.BYTES_PER_SAMPLE != 0 || curSysCounter == 0 || prevSysCounter == 0) {
-				Arrays.fill(buff, (byte) 0);
-				return TEMPODevice.BYTES_EXPECTED_PER_POLL;//BYTES_PER_SAMPLE*SAMPLES_PER_SECOND*SECONDS_PER_POLL;
-
-			} else {
-				//makes sure that if 0x10 was added by the to prevent 
-				//a byte from being a \r or \n it is set to the correct value
-				for (int i = 0; i < end - 6; i += 2) {
-					if (buff[i] == mlf || buff[i] == mcr) {
-						buff[i] -= 0x10;
-					}
-					if (buff[i] >= 0x10) {
-						Arrays.fill(buff, (byte) 0);
-						return TEMPODevice.BYTES_EXPECTED_PER_POLL;
-					}
-				}
-				
-				//gets the difference in the expected number of 
-				//data points recieved and the actual number
-				diff = (int) (6 * (curSysCounter - prevSysCounter) - (end - 6));
-				//adds diff to a varialbe which keeps track of 
-				//the number of bytes the current data set is off by
-				balance += diff;
-				if (balance <= TEMPODevice.BYTES_PER_SAMPLE && balance >= -TEMPODevice.BYTES_PER_SAMPLE) {
-					//if the number of bytes the current data set is 
-					//off by is within acceptable ranges
-					//it sets a variable to accept all that data from the packet
-					diff = end - 6;
-
-
-				} else if (balance > TEMPODevice.BYTES_PER_SAMPLE) {
-
-					//If the data set has fewer points than allowable,
-					//it pads the current data packet with 0's
-					diff = (int) (TEMPODevice.BYTES_PER_SAMPLE * Math.floor(balance / TEMPODevice.BYTES_PER_SAMPLE));
-					balance -= diff;
-					diff += end - 6;
-
-					for (int i = end - 6; i < diff; i++) {
-						buff[i] = 0;
-					}
-				} else if (balance < -TEMPODevice.BYTES_PER_SAMPLE) {
-					//If the data set has more points than allowable,
-					//it only accepts a portion of the data.
-
-					diff = (int) (TEMPODevice.BYTES_PER_SAMPLE * Math.ceil(balance / TEMPODevice.BYTES_PER_SAMPLE));
-					balance -= diff;
-
-					diff += end - 6;
-
-				}
-			}
-
-			return (short) diff;
-
-		}
+//		private short validate(byte[] buff, short end, int curSysCounter, int prevSysCounter){
+//			int diff;
+//
+//			byte mcr = MOD_CR;
+//			byte mlf = MOD_LF;
+//			//Checks to see if it got the entire packet
+//			//and if it got the right number of bytes
+//			if (end <= 6 || buff[(end - 2)] != '\r' || buff[(end - 1)] != '\n'
+//					|| (end - 6) % TEMPODeviceInfo.BYTES_PER_SAMPLE != 0 || curSysCounter == 0 || prevSysCounter == 0) {
+//				Arrays.fill(buff, (byte) 0);
+//				return TEMPODeviceInfo.BYTES_EXPECTED_PER_POLL;//BYTES_PER_SAMPLE*SAMPLES_PER_SECOND*SECONDS_PER_POLL;
+//
+//			} else {
+//				//makes sure that if 0x10 was added by the to prevent 
+//				//a byte from being a \r or \n it is set to the correct value
+//				for (int i = 0; i < end - 6; i += 2) {
+//					if (buff[i] == mlf || buff[i] == mcr) {
+//						buff[i] -= 0x10;
+//					}
+//					if (buff[i] >= 0x10) {
+//						Arrays.fill(buff, (byte) 0);
+//						return TEMPODeviceInfo.BYTES_EXPECTED_PER_POLL;
+//					}
+//				}
+//				
+//				//gets the difference in the expected number of 
+//				//data points recieved and the actual number
+//				diff = (int) (6 * (curSysCounter - prevSysCounter) - (end - 6));
+//				//adds diff to a varialbe which keeps track of 
+//				//the number of bytes the current data set is off by
+//				balance += diff;
+//				if (balance <= TEMPODeviceInfo.BYTES_PER_SAMPLE && balance >= -TEMPODeviceInfo.BYTES_PER_SAMPLE) {
+//					//if the number of bytes the current data set is 
+//					//off by is within acceptable ranges
+//					//it sets a variable to accept all that data from the packet
+//					diff = end - 6;
+//
+//
+//				} else if (balance > TEMPODeviceInfo.BYTES_PER_SAMPLE) {
+//
+//					//If the data set has fewer points than allowable,
+//					//it pads the current data packet with 0's
+//					diff = (int) (TEMPODeviceInfo.BYTES_PER_SAMPLE * Math.floor(balance / TEMPODeviceInfo.BYTES_PER_SAMPLE));
+//					balance -= diff;
+//					diff += end - 6;
+//
+//					for (int i = end - 6; i < diff; i++) {
+//						buff[i] = 0;
+//					}
+//				} else if (balance < -TEMPODeviceInfo.BYTES_PER_SAMPLE) {
+//					//If the data set has more points than allowable,
+//					//it only accepts a portion of the data.
+//
+//					diff = (int) (TEMPODeviceInfo.BYTES_PER_SAMPLE * Math.ceil(balance / TEMPODeviceInfo.BYTES_PER_SAMPLE));
+//					balance -= diff;
+//
+//					diff += end - 6;
+//
+//				}
+//			}
+//
+//			return (short) diff;
+//
+//		}
 		
-		private void recordCalibData(TEMPODevice node){
+		private void recordCalibData(TEMPODeviceInfo deviceDescriptor){
 
-			while(node.getCalibData() == null){
+			ByteBuffer calibData;
+					
+			while((calibData = collectionService.getCalibData(deviceDescriptor)) == null){
 				try {
 					Thread.sleep(100);
 				} catch (InterruptedException e) {
@@ -452,11 +449,10 @@ public class SessionMonitor extends Activity {
 			}
 
 			try {
-				FileOutputStream calibFS = new FileOutputStream(new File(Main.tempDir, node.getMac()
+				FileOutputStream calibFS = new FileOutputStream(new File(Main.tempDir, deviceDescriptor.getMac()
 						+ "_calib.dat"));
-
-				byte[] calibData = node.getCalibData().array();
-				calibFS.write(calibData, 0, calibData.length);
+				byte[] calibDataArray = calibData.array();
+				calibFS.write(calibDataArray, 0, calibDataArray.length);
 
 
 			} catch (IOException e) {
@@ -466,7 +462,7 @@ public class SessionMonitor extends Activity {
 
 		}
 		
-		private void recordStartTime(long l, TEMPODevice node){
+		private void recordStartTime(long l, TEMPODeviceInfo node){
 						
 			try {
 				File f = new File(Main.tempDir, node.getMac()
@@ -474,7 +470,7 @@ public class SessionMonitor extends Activity {
 				if (!f.exists()) {
 					DataOutputStream startTimeStream = new DataOutputStream(
 							new FileOutputStream(f));
-					startTimeStream.writeUTF(node.getName() + "\n");
+					startTimeStream.writeUTF(node.getNodeName() + "\n");
 					startTimeStream.writeLong(l);
 					startTimeStream.close();
 				}
@@ -488,7 +484,7 @@ public class SessionMonitor extends Activity {
 		/**************************************************************************
 		 * Makes a new temporary file to hold sensor data with properly formated name
 		 *****************************************************************************/
-		private void makeNewTempFile(TEMPODevice node) {
+		private void makeNewTempFile(TEMPODeviceInfo node) {
 				int i = devicesCollecting.indexOf(node);
 				currentFileNumber[i]++;
 				tempDataFile[i] = new File(Main.tempDir, node.getMac() + "_" + currentFileNumber[i] + ".dat");
@@ -509,12 +505,15 @@ public class SessionMonitor extends Activity {
 		@Override
 		protected void onPostExecute(String result) {
 			// ends the activity
-			for(TEMPODevice i: devicesCollecting){
+			for(TEMPODeviceInfo i: devicesCollecting){
 				recordCalibData(i);
 			}
 			
 			new createXMLTask().execute();
-
+			
+			SessionMonitor.this.stopService(new Intent(SessionMonitor.this,
+					TEMPOService.class));
+			
 			finish();
 
 		}
@@ -533,26 +532,25 @@ public class SessionMonitor extends Activity {
 			// binder used to get service
 			LocalBinder binder = (LocalBinder) service;
 			mService = binder.getService();
-			ArrayList<TEMPODevice> localDevicesInSession = new ArrayList<TEMPODevice>();
+			ArrayList<TEMPODeviceInfo> localDevicesInSession = new ArrayList<TEMPODeviceInfo>();
 			
 			for(int i = 0; i < devicesInSession.getCount(); i++){
 				localDevicesInSession.add(devicesInSession.getItem(i));
 			}
 
-			for(TEMPODevice i: localDevicesInSession){
-				mService.connectToDevice(i);
-				mService.startCollection(i);
+			mService.connectToDevice((TEMPODeviceInfo[])localDevicesInSession.toArray());
+			mService.startCollection();
 
-			}
+			
 //			nodesInSession = mService.getNodesConntected();
 //
 //
-//			for(TEMPODevice i: nodesInSession)
+//			for(TEMPODeviceInfo i: nodesInSession)
 //				mService.startCollection(i);
 			
 			
 			long loopTimer = System.currentTimeMillis();
-			while(!mService.getNodesInSession().contains(localDevicesInSession)){
+			while(!mService.getNodesCollecting().contains(localDevicesInSession)){
 				try {
 					Thread.sleep(500);
 				} catch (InterruptedException e) {
@@ -580,17 +578,17 @@ public class SessionMonitor extends Activity {
 	 * This class keeps track of information concerning a ListView(what is
 	 * or is not selected and what exists in a ListView).
 	 *****************************************************************************/
-	private class MonitorAdapter extends ArrayAdapter<TEMPODevice> {
+	private class MonitorAdapter extends ArrayAdapter<TEMPODeviceInfo> {
 
 		private final Context context;
-		private ArrayList<TEMPODevice> vals;
+		private ArrayList<TEMPODeviceInfo> vals;
 		private ArrayList<Byte> states;
 		/**************************************************************************
 		 * Constructs an instance of SelectionAdapter that sets the values
 		 * @param context The current context.
 		 * @param pValues The list of strings that will initially be in the ListView.
 		 *****************************************************************************/
-		public MonitorAdapter(Context context, ArrayList<TEMPODevice> pValues) {
+		public MonitorAdapter(Context context, ArrayList<TEMPODeviceInfo> pValues) {
 			super(context, R.layout.row, pValues);
 			this.context = context;
 			vals = pValues;
@@ -601,7 +599,7 @@ public class SessionMonitor extends Activity {
 
 		}
 		
-		public void updateState(TEMPODevice node, byte state){
+		public void updateState(TEMPODeviceInfo node, byte state){
 			states.set(vals.indexOf(node), state);
 		}
 
